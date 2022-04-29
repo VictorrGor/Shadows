@@ -13,9 +13,24 @@ typedef DirectX::XMMATRIX mtx;
 
 
 class Entity;
-class ShaderClass;
+class PhongShader;
 class Camera;
+struct Light;
 
+struct MVP
+{
+	mtx mModel;
+	mtx mView;
+	mtx mProjection;
+};
+
+struct FrameState
+{
+	vec3* pCameraPos;
+	Light* pLight;
+	MVP* mMVP;
+	UINT indicesCount;
+};
 
 struct Vertex
 {
@@ -23,22 +38,6 @@ struct Vertex
 	vec3 normal;
 	vec4 color;
 };
-
-struct CBPerObj
-{
-	mtx model;
-	mtx view;
-	mtx projection;
-};
-#pragma pack(push, 1)
-struct LightCB
-{
-	vec4 lightColor;
-	vec4 ambientColor;
-	vec3 lightPos;
-	float distance;
-};
-#pragma pop()
 
 using namespace DirectX;
 
@@ -52,12 +51,11 @@ class RenderSys
 	IDXGISwapChain* pSwapChain;
 	ID3D11RenderTargetView* pRenderTargetView;
 	ID3D11DepthStencilView* pDepthBuffer;
-	ID3D11Buffer* pModelCB;
-	ID3D11Buffer* pLightCB;
-	ID3D11Buffer* pCameraCB;
 
 	Camera* mCamera;
 	std::vector<Entity*> objects;
+	PhongShader* pSh;
+	FrameState* pFS;
 public:
 	RenderSys();
 	~RenderSys();
@@ -67,10 +65,10 @@ public:
 	void drawPlaneScene();
 	void Render();
 	void drawNormals(const Vertex* _vertices, UINT _count);
-	void genSphere(UINT tesselation_lvl);
 
-	Entity* createEntity(Vertex* _pVx, UINT _vxCount, UINT* _pIndex, UINT _indexCount, D3D_PRIMITIVE_TOPOLOGY _topology, ShaderClass* _pShader);
+	Entity* createEntity(Vertex* _pVx, UINT _vxCount, UINT* _pIndex, UINT _indexCount);
 	ID3D11Buffer* createVertexBuffer(Vertex* _mem, UINT _ptCount);
 	ID3D11Buffer* createIndexBuffer(UINT* _mem, UINT _indexCount);
 
+	void renderZScene();
 };

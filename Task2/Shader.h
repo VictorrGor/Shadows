@@ -1,17 +1,25 @@
 #pragma once
-#include  "Render.h"
 #include <d3dcompiler.h>
+#include "Render.h"
+#include "Light.h"
+#include "Camera.h"
 
+struct MVP;
+struct FrameState;
 
-class ShaderClass
+class PhongShader
 {
 	ID3D11PixelShader* pPxSh;
 	ID3D11VertexShader* pVxSh;
 	ID3D11InputLayout* pVtxLayout;
+	ID3D11Buffer* pMVP_CB;
+	ID3D11Buffer* pLightCB;
+	ID3D11Buffer* pCameraCB;
 public:
-	ShaderClass();
-	~ShaderClass();
-	HRESULT Initialize(ID3D11Device* _pDevice, LPCWSTR _vsName, LPCWSTR _psName);
+	PhongShader();
+	~PhongShader();
+	HRESULT Initialize(ID3D11Device* _pDevice, ID3D11DeviceContext* _pDeviceContext, LPCWSTR _vsName, LPCWSTR _psName);
 	void Release();
-	void SetShader(ID3D11DeviceContext* _pDeviceContext);
+	void Render(ID3D11DeviceContext* _pDeviceContext, const FrameState* _pFS);
+	void initCB(ID3D11Device* _pDevice, ID3D11DeviceContext* _pDeviceContext);
 };

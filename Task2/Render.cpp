@@ -8,9 +8,8 @@ RenderSys::RenderSys()
 	pRenderTargetView = nullptr;
 	pDepthBuffer = nullptr;
 	mCamera = nullptr;
-	pModelCB = nullptr;
-	pCameraCB = nullptr;
-	pLightCB = nullptr;
+	pSh = nullptr;
+	pFS = nullptr;
 }
 
 RenderSys::~RenderSys()
@@ -113,13 +112,14 @@ HRESULT RenderSys::Initialize(const HWND& hWnd)
 
 	mCamera = new Camera({ 0,0,0 }, { 1,0,0 }, { 0,1,0 }, width, height);
 
-	//Constant Buffers
-	D3D11_BUFFER_DESC cb_ds;
-	memset(&cb_ds, 0, sizeof(cb_ds));
-	cb_ds.ByteWidth = sizeof(CBPerObj);
-	cb_ds.Usage = D3D11_USAGE_DEFAULT;;
-	cb_ds.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-	hRes = pDevice->CreateBuffer(&cb_ds, NULL, &pModelCB);
+	pSh = new PhongShader();
+	pSh->Initialize(pDevice, pDeviceContext, L"shaders/VertexShader.hlsl", L"shaders/PixelShader.hlsl");
+	pFS = new FrameState(); pFS->mMVP = new MVP();
+	pFS->pLight = new Light();
+	pFS->pLight->ambientColor = { 0.3, 0.3, 0.3, 1 };
+	pFS->pLight->distance = 2;
+	pFS->pLight->lightColor = { 1, 1, 1, 1 };
+	pFS->pLight->lightPos = { 0, 1, 1 };
 
 	return hRes;
 }
@@ -158,20 +158,17 @@ void RenderSys::Release()
 		pDevice->Release();
 		pDevice = nullptr;
 	}
-	if (pModelCB)
+	if (pSh)
 	{
-		pModelCB->Release();
-		pModelCB = nullptr;
+		delete pSh;
+		pSh = nullptr;
 	}
-	if (pCameraCB)
+	if (pFS)
 	{
-		pCameraCB->Release();
-		pCameraCB = nullptr;
-	}
-	if (pLightCB)
-	{
-		pLightCB->Release();
-		pLightCB = nullptr;
+		delete pFS->mMVP;
+		delete pFS->pLight;
+		delete pFS;
+		pFS = nullptr;
 	}
 }
 
@@ -225,38 +222,6 @@ void calcWeightedNormals(Vertex* _vertices, UINT _vtxCount, const UINT* _indicie
 	delete[] linkCounter;
 }
 
-HRESULT initPixelConstBuffers(ID3D11Device* _pDevice, ID3D11DeviceContext* _pDeviceContext, ID3D11Buffer** _pLight, ID3D11Buffer** _pCamera)
-{
-	LightCB pixelBuf;
-	pixelBuf.lightColor = { 1, 1, 1, 1 };
-	pixelBuf.lightPos = { 0, 1, 1 };
-	pixelBuf.ambientColor = { 0.3, 0.3, 0.3, 1 };
-	pixelBuf.distance = 2;
-
-	D3D11_BUFFER_DESC ds; memset(&ds, 0, sizeof(ds));
- 	ds.ByteWidth = sizeof(LightCB);
-	ds.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-	ds.Usage = D3D11_USAGE_DEFAULT;
-
-	D3D11_SUBRESOURCE_DATA dataStorage;
-	memset(&dataStorage, 0, sizeof(dataStorage));
-	dataStorage.pSysMem = &pixelBuf;
-	HRESULT hRes = _pDevice->CreateBuffer(&ds, &dataStorage, _pLight);
-
-	if (FAILED(hRes)) return hRes;
-
-	_pDeviceContext->PSSetConstantBuffers(0, 1, _pLight);
-
-	memset(&ds, 0, sizeof(ds));
-	ds.ByteWidth = sizeof(XMFLOAT4);
-	ds.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-	ds.Usage = D3D11_USAGE_DEFAULT;	
-
-	hRes = _pDevice->CreateBuffer(&ds, NULL, _pCamera);
-	
-	_pDeviceContext->PSSetConstantBuffers(1, 1, _pCamera);
-	return hRes;
-}
 
 void RenderSys::drawCubeScene()
 {
@@ -288,13 +253,7 @@ void RenderSys::drawCubeScene()
 	}; 
 
 	calcWeightedNormals(&cube[0], 8, &indexes[0], ARRAYSIZE(indexes));
-	ShaderClass* pShader = new ShaderClass();
-	pShader->Initialize(pDevice, L"shaders/vertexShader.hlsl", L"shaders/pixelShader.hlsl");
-	objects.push_back(createEntity(&cube[0], 8, &indexes[0], ARRAYSIZE(indexes), D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST, pShader));
-	
-	HRESULT hRes = initPixelConstBuffers(pDevice, pDeviceContext, &pLightCB, &pCameraCB);
-
-
+	objects.push_back(createEntity(&cube[0], 8, &indexes[0], ARRAYSIZE(indexes)));
 }
 
 void RenderSys::drawPlaneScene()
@@ -312,9 +271,9 @@ void RenderSys::drawPlaneScene()
 
 	UINT indexes[] = { 0, 2, 1, 0, 3, 2 };
 
-	ShaderClass* pShader = new ShaderClass();
-	pShader->Initialize(pDevice, L"shaders/vertexShader.hlsl", L"shaders/pixelShader.hlsl");
-	objects.push_back(createEntity(&plane[0], ARRAYSIZE(plane), &indexes[0], ARRAYSIZE(indexes), D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST, pShader));
+	PhongShader* pShader = new PhongShader();
+	pShader->Initialize(pDevice, pDeviceContext, L"shaders/vertexShader.hlsl", L"shaders/pixelShader.hlsl");
+	objects.push_back(createEntity(&plane[0], ARRAYSIZE(plane), &indexes[0], ARRAYSIZE(indexes)));
 	
 	calcWeightedNormals(&plane[0], 4, &indexes[0], 6);
 	drawNormals(&plane[0], 4);
@@ -330,9 +289,9 @@ void RenderSys::drawNormals(const Vertex* _vertices, UINT _count)
 		v1 = XMLoadFloat3(&_vertices[iVtx].position); v2 = XMLoadFloat3(&_vertices[iVtx].normal);
 		XMStoreFloat3(&normlas[iVtx * 2 + 1].position, XMVectorAdd(v1, v2));
 	}
-	ShaderClass* pShader = new ShaderClass();
-	pShader->Initialize(pDevice, L"shaders/vertexShader.hlsl", L"shaders/pixelShader.hlsl");
-	objects.push_back(createEntity(normlas, _count * 2, nullptr, 0, D3D11_PRIMITIVE_TOPOLOGY_LINELIST, pShader));
+	PhongShader* pShader = new PhongShader();
+	pShader->Initialize(pDevice, pDeviceContext, L"shaders/vertexShader.hlsl", L"shaders/pixelShader.hlsl");
+	objects.push_back(createEntity(normlas, _count * 2, nullptr, 0));
 
 }
 
@@ -359,20 +318,23 @@ void RenderSys::Render()
 	float t = (actualTime - startTime) / 1000.0f;
 	vec3 camPos = { R * sinf(t) , 2, R * cosf(t) };
 	mCamera->setPos(camPos, { 0, 0, 0 }, { 0, 1, 0 });
-	pDeviceContext->UpdateSubresource(pCameraCB, 0, NULL, &camPos, 0, 0);
-
+	
+	mCamera->getVP(pFS->mMVP->mProjection, pFS->mMVP->mView);
+	pFS->pCameraPos = &camPos;
 	for (std::vector<Entity*>::iterator it = objects.begin(); it != objects.end(); ++it)
 	{
-		(*it)->Render(pDeviceContext, *mCamera, nullptr, pModelCB);
+		(*it)->getModelMx(pFS->mMVP->mModel);
+		(*it)->Render(pDeviceContext);
+		pFS->indicesCount = (*it)->getIndicesCount();
+		pSh->Render(pDeviceContext, pFS);
 	}
 	pSwapChain->Present(1, 0);
 }
 
-Entity* RenderSys::createEntity(Vertex* _pVx, UINT _vxCount, UINT* _pIndex, UINT _indexCount,
-	D3D_PRIMITIVE_TOPOLOGY _topology, ShaderClass* _pShader)
+Entity* RenderSys::createEntity(Vertex* _pVx, UINT _vxCount, UINT* _pIndex, UINT _indexCount)
 {
 	Entity* res = new Entity();
-	res->Initialize(createVertexBuffer(_pVx, _vxCount), _vxCount, createIndexBuffer(_pIndex, _indexCount), _indexCount, _topology, _pShader);
+	res->Initialize(createVertexBuffer(_pVx, _vxCount), _vxCount, createIndexBuffer(_pIndex, _indexCount), _indexCount);
 	return res;
 }
 
@@ -413,4 +375,8 @@ ID3D11Buffer* RenderSys::createIndexBuffer(UINT* _mem, UINT _indexCount)
 	if (status != S_OK) return nullptr;
 
 	return res;
+}
+
+void RenderSys::renderZScene()
+{
 }
