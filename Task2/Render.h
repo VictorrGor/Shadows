@@ -2,6 +2,7 @@
 #include <d3d11.h>
 #include <DirectXMath.h>
 #include <vector>
+#include <queue>
 
 typedef DirectX::XMFLOAT3 vec3;
 typedef DirectX::XMFLOAT4 vec4;
@@ -9,13 +10,15 @@ typedef DirectX::XMMATRIX mtx;
 
 #include "Camera.h"
 #include "Entity.h"
-#include <queue>
+#include "RenderToTexture.h"
 
 
 class Entity;
 class PhongShader;
+class DepthShader;
 class Camera;
 struct Light;
+class RenderTexture;
 
 struct MVP
 {
@@ -26,10 +29,17 @@ struct MVP
 
 struct FrameState
 {
+	FrameState();
+	~FrameState();
+	HRESULT Initialize(ID3D11Device* _pDevice);
+
 	vec3* pCameraPos;
 	Light* pLight;
 	MVP* mMVP;
 	UINT indicesCount;
+	ID3D11Texture2D* pDepthBuffer;
+	ID3D11ShaderResourceView* pSRV;
+	ID3D11SamplerState* pSS;
 };
 
 struct Vertex
@@ -51,11 +61,15 @@ class RenderSys
 	IDXGISwapChain* pSwapChain;
 	ID3D11RenderTargetView* pRenderTargetView;
 	ID3D11DepthStencilView* pDepthBuffer;
+	D3D11_VIEWPORT mVP;
 
 	Camera* mCamera;
 	std::vector<Entity*> objects;
-	PhongShader* pSh;
 	FrameState* pFS;
+	RenderTexture* pRtT;
+	//Shaders
+	PhongShader* pLightSh;
+	DepthShader* pZSh;
 public:
 	RenderSys();
 	~RenderSys();
@@ -69,6 +83,4 @@ public:
 	Entity* createEntity(Vertex* _pVx, UINT _vxCount, UINT* _pIndex, UINT _indexCount);
 	ID3D11Buffer* createVertexBuffer(Vertex* _mem, UINT _ptCount);
 	ID3D11Buffer* createIndexBuffer(UINT* _mem, UINT _indexCount);
-
-	void renderZScene();
 };

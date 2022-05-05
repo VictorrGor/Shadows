@@ -8,8 +8,10 @@ RenderSys::RenderSys()
 	pRenderTargetView = nullptr;
 	pDepthBuffer = nullptr;
 	mCamera = nullptr;
-	pSh = nullptr;
+	pLightSh = nullptr;
+	pZSh = nullptr;
 	pFS = nullptr;
+	pRtT = nullptr;
 }
 
 RenderSys::~RenderSys()
@@ -101,26 +103,31 @@ HRESULT RenderSys::Initialize(const HWND& hWnd)
 	pDeviceContext->OMSetRenderTargets(1, &pRenderTargetView, pDepthBuffer);
 
 	// Setup the viewport
-	D3D11_VIEWPORT vp;
-	vp.Width = (FLOAT)width;
-	vp.Height = (FLOAT)height;
-	vp.MinDepth = 0.0f;
-	vp.MaxDepth = 1.0f;
-	vp.TopLeftX = 0;
-	vp.TopLeftY = 0;
-	pDeviceContext->RSSetViewports(1, &vp);
+	mVP.Width = (FLOAT)width;
+	mVP.Height = (FLOAT)height;
+	mVP.MinDepth = 0.0f;
+	mVP.MaxDepth = 1.0f;
+	mVP.TopLeftX = 0;
+	mVP.TopLeftY = 0;
+	pDeviceContext->RSSetViewports(1, &mVP);
 
 	mCamera = new Camera({ 0,0,0 }, { 1,0,0 }, { 0,1,0 }, width, height);
 
-	pSh = new PhongShader();
-	pSh->Initialize(pDevice, pDeviceContext, L"shaders/VertexShader.hlsl", L"shaders/PixelShader.hlsl");
-	pFS = new FrameState(); pFS->mMVP = new MVP();
-	pFS->pLight = new Light();
-	pFS->pLight->ambientColor = { 0.3, 0.3, 0.3, 1 };
-	pFS->pLight->distance = 2;
-	pFS->pLight->lightColor = { 1, 1, 1, 1 };
-	pFS->pLight->lightPos = { 0, 1, 1 };
+	pLightSh = new PhongShader();
+	pLightSh->Initialize(pDevice, pDeviceContext, L"shaders/VertexShader.hlsl", L"shaders/PixelShader.hlsl");
 
+	pZSh = new DepthShader();
+	pZSh->Initialize(pDevice, pDeviceContext, L"shaders/DepthVS.hlsl", L"shaders/DepthPS.hlsl");
+	
+	pFS = new FrameState(); 
+	hRes = pFS->Initialize(pDevice);
+	if (FAILED(hRes)) return hRes;
+
+	pRtT = new RenderTexture();
+	mtx mxProjective; float fFar, fNear;
+	mCamera->getProjectionMxAndAttributes(mxProjective, fNear, fFar);
+	pRtT->Initialize(pDevice, 1024, 1024, fFar, fNear, mxProjective);
+	
 	return hRes;
 }
 
@@ -158,17 +165,25 @@ void RenderSys::Release()
 		pDevice->Release();
 		pDevice = nullptr;
 	}
-	if (pSh)
+	if (pLightSh)
 	{
-		delete pSh;
-		pSh = nullptr;
+		delete pLightSh;
+		pLightSh = nullptr;
+	}
+	if (pZSh)
+	{
+		delete pZSh;
+		pZSh = nullptr;
 	}
 	if (pFS)
 	{
-		delete pFS->mMVP;
-		delete pFS->pLight;
 		delete pFS;
 		pFS = nullptr;
+	}
+	if (pRtT)
+	{
+		delete pRtT;
+		pRtT = nullptr;
 	}
 }
 
@@ -222,10 +237,95 @@ void calcWeightedNormals(Vertex* _vertices, UINT _vtxCount, const UINT* _indicie
 	delete[] linkCounter;
 }
 
-
 void RenderSys::drawCubeScene()
 {
-	Vertex cube[8];
+	Vertex cube[24];
+	//up
+	cube[0].position = { 0.5, 0.5, 0.5 };
+	cube[0].color = { 1, 0, 0, 1 };
+	cube[0].normal = { 0, 1, 0 };
+	cube[1].position = { -0.5, 0.5, 0.5 };
+	cube[1].color = { 0, 1, 0, 1 };
+	cube[1].normal = { 0, 1, 0 };
+	cube[2].position = { -0.5, 0.5, -0.5 };
+	cube[2].color = { 0, 0, 1, 1 };
+	cube[2].normal = { 0, 1, 0 };
+	cube[3].position = { 0.5, 0.5, -0.5 };
+	cube[3].color = { 1, 0, 0, 1 };
+	cube[3].normal = { 0, 1, 0 };
+	//front
+	cube[4].position = { 0.5, 0.5, 0.5 };
+	cube[4].color = { 1, 0, 0, 1 };
+	cube[4].normal = { 1, 0, 0 };
+	cube[5].position = { 0.5, 0.5, -0.5 };
+	cube[5].color = { 0, 1, 0, 1 };
+	cube[5].normal = { 1, 0, 0 };
+	cube[6].position = { 0.5, -0.5, -0.5 };
+	cube[6].color = { 0, 0, 1, 1 };
+	cube[6].normal = { 1, 0, 0 };
+	cube[7].position = { 0.5, -0.5, 0.5 };
+	cube[7].color = { 1, 0, 0, 1 };
+	cube[7].normal = { 1, 0, 0 };
+	//back
+	cube[8].position = { -0.5, 0.5, 0.5 };
+	cube[8].color = { 1, 0, 0, 1 };
+	cube[8].normal = { -1, 0, 0 };
+	cube[9].position = { -0.5, 0.5, -0.5 };
+	cube[9].color = { 0, 1, 0, 1 };
+	cube[9].normal = { -1, 0, 0 };
+	cube[10].position = { -0.5, -0.5, -0.5 };
+	cube[10].color = { 0, 0, 1, 1 };
+	cube[10].normal = { -1, 0, 0 };
+	cube[11].position = { -0.5, -0.5, 0.5 };
+	cube[11].color = { 1, 0, 0, 1 };
+	cube[11].normal = { -1, 0, 0 };
+	//left
+	cube[12].position = { -0.5, 0.5, -0.5 };
+	cube[12].color = { 1, 0, 0, 1 };
+	cube[12].normal = { 0, 0, -1 };
+	cube[13].position = { 0.5, 0.5, -0.5 };
+	cube[13].color = { 0, 1, 0, 1 };
+	cube[13].normal = { 0, 0, -1 };
+	cube[14].position = { -0.5, -0.5, -0.5 };
+	cube[14].color = { 0, 0, 1, 1 };
+	cube[14].normal = { 0, 0, -1};
+	cube[15].position = { 0.5, -0.5, -0.5 };
+	cube[15].color = { 1, 0, 0, 1 };
+	cube[15].normal = { 0, 0, -1 };
+	//right
+	cube[16].position = { -0.5, 0.5, 0.5 };
+	cube[16].color = { 1, 0, 0, 1 };
+	cube[16].normal = { 0, 0, 1 };
+	cube[17].position = { 0.5, 0.5, 0.5 };
+	cube[17].color = { 0, 1, 0, 1 };
+	cube[17].normal = { 0, 0, 1 };
+	cube[18].position = { -0.5, -0.5, 0.5 };
+	cube[18].color = { 0, 0, 1, 1 };
+	cube[18].normal = { 0, 0, 1 };
+	cube[19].position = { 0.5, -0.5, 0.5 };
+	cube[19].color = { 1, 0, 0, 1 };
+	cube[19].normal = { 0, 0, 1 };
+	//down
+	cube[20].position = { 0.5, -0.5, 0.5 };
+	cube[20].color = { 1, 0, 0, 1 };
+	cube[20].normal = { 0, -1, 0 };
+	cube[21].position = { -0.5, -0.5, 0.5 };
+	cube[21].color = { 0, 1, 0, 1 };
+	cube[21].normal = { 0, -1, 0 };
+	cube[22].position = { -0.5, -0.5, -0.5 };
+	cube[22].color = { 0, 0, 1, 1 };
+	cube[22].normal = { 0, -1, 0 };
+	cube[23].position = { 0.5, -0.5, -0.5 };
+	cube[23].color = { 1, 0, 0, 1 };
+	cube[23].normal = { 0, -1, 0 };
+
+	UINT indexes[] = { 0, 2, 1, 0, 3, 2, 20, 21, 22, 20, 22, 23, 
+					4, 6, 5, 6, 4, 7, 9, 10, 8, 10, 11, 8, 
+					12, 13, 15, 14, 12, 15, 17, 16, 19, 19, 16, 18
+	};
+
+	objects.push_back(createEntity(&cube[0], ARRAYSIZE(cube), &indexes[0], ARRAYSIZE(indexes)));
+	/*Vertex cube[8];
 
 	cube[0].position = { 0.5, 0.5, 0.5 };
 	cube[0].color = { 1, 0, 0, 1 };
@@ -254,6 +354,21 @@ void RenderSys::drawCubeScene()
 
 	calcWeightedNormals(&cube[0], 8, &indexes[0], ARRAYSIZE(indexes));
 	objects.push_back(createEntity(&cube[0], 8, &indexes[0], ARRAYSIZE(indexes)));
+
+	*/
+	Vertex plane[4];
+	for (UINT i = 0; i < 4; ++i)
+	{
+		plane[i].normal = vec3(0, 1, 0);
+		plane[i].color = vec4(0.9, 0.9, 0.9, 1);
+	}
+	float plane_size = 5;
+	plane[0].position = vec3(-plane_size, -0.5, -plane_size);
+	plane[1].position = vec3(-plane_size, -0.5,  plane_size);
+	plane[2].position = vec3( plane_size, -0.5,  plane_size);
+	plane[3].position = vec3( plane_size, -0.5, -plane_size);
+	UINT plane_indexes[] = { 0, 1, 3, 3, 1, 2 };
+	objects.push_back(createEntity(&plane[0], ARRAYSIZE(plane), &plane_indexes[0], ARRAYSIZE(plane_indexes)));
 }
 
 void RenderSys::drawPlaneScene()
@@ -308,25 +423,41 @@ void flipNormals(Vertex* _vertices, UINT _count)
 
 void RenderSys::Render()
 {
-	const static float ClearColor[4] = { 1.0f, 1.f, 1.f, 1.0f };
-	pDeviceContext->ClearRenderTargetView(pRenderTargetView, ClearColor);
-	pDeviceContext->ClearDepthStencilView(pDepthBuffer, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
-
 	static DWORD startTime = GetTickCount();
 	DWORD actualTime = GetTickCount();
 	static float R = 2;
-	float t = (actualTime - startTime) / 1000.0f;
+	float t = (actualTime - startTime) / 1500.0f;
 	vec3 camPos = { R * sinf(t) , 2, R * cosf(t) };
 	mCamera->setPos(camPos, { 0, 0, 0 }, { 0, 1, 0 });
-	
 	mCamera->getVP(pFS->mMVP->mProjection, pFS->mMVP->mView);
 	pFS->pCameraPos = &camPos;
+
+	//ZTest
+	pRtT->setRenderTarget(pDeviceContext);
 	for (std::vector<Entity*>::iterator it = objects.begin(); it != objects.end(); ++it)
 	{
 		(*it)->getModelMx(pFS->mMVP->mModel);
 		(*it)->Render(pDeviceContext);
 		pFS->indicesCount = (*it)->getIndicesCount();
-		pSh->Render(pDeviceContext, pFS);
+		pZSh->Render(pDeviceContext, pFS);
+	}
+
+	//Forward
+
+	pDeviceContext->OMSetRenderTargets(1, &pRenderTargetView, pDepthBuffer);
+	const static float ClearColor[4] = { 0.3f, 0.3f, 0.3f, 1.0f };
+	pDeviceContext->ClearRenderTargetView(pRenderTargetView, ClearColor);
+	pDeviceContext->ClearDepthStencilView(pDepthBuffer, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+	pDeviceContext->RSSetViewports(1, &mVP);
+	pFS->pDepthBuffer = pRtT->getTargetTexture();
+	pFS->pSRV = pRtT->getShaderResourceView();
+
+	for (std::vector<Entity*>::iterator it = objects.begin(); it != objects.end(); ++it)
+	{
+		(*it)->getModelMx(pFS->mMVP->mModel);
+		(*it)->Render(pDeviceContext);
+		pFS->indicesCount = (*it)->getIndicesCount();
+		pLightSh->Render(pDeviceContext, pFS);
 	}
 	pSwapChain->Present(1, 0);
 }
@@ -377,6 +508,46 @@ ID3D11Buffer* RenderSys::createIndexBuffer(UINT* _mem, UINT _indexCount)
 	return res;
 }
 
-void RenderSys::renderZScene()
+FrameState::FrameState()
 {
+	pCameraPos = nullptr;
+	pLight = nullptr;
+	mMVP = nullptr;
+	pDepthBuffer = nullptr;
+	pSRV = nullptr;
+	pSS = nullptr;
+	indicesCount = 0;
+}
+
+FrameState::~FrameState()
+{
+	delete mMVP;
+	delete pLight;
+	if (pSS)
+	{
+		pSS->Release();
+		pSS = nullptr;
+	}
+}
+
+HRESULT FrameState::Initialize(ID3D11Device* _pDevice)
+{
+	mMVP = new MVP();
+
+	pLight = new Light();
+	pLight->ambientColor = { 0.3, 0.3, 0.3, 1 };
+	pLight->distance = 5;
+	pLight->lightColor = { 1, 1, 1, 1 };
+	pLight->lightPos = { 0, 1, 1 };
+
+	D3D11_SAMPLER_DESC pSamplerDesc; memset(&pSamplerDesc, 0, sizeof(pSamplerDesc));
+	pSamplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+	pSamplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+	pSamplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+	pSamplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+	pSamplerDesc.MaxAnisotropy = 1;
+	pSamplerDesc.ComparisonFunc = D3D11_COMPARISON_ALWAYS;
+	pSamplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
+	HRESULT hRes = _pDevice->CreateSamplerState(&pSamplerDesc, &pSS);
+	return hRes;
 }
