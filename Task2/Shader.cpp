@@ -244,6 +244,7 @@ void DepthShader::Render(ID3D11DeviceContext* _pDeviceContext, const FrameState*
 	_pDeviceContext->UpdateSubresource(pMVP_CB, 0, NULL, _pFS->mMVP, 0, 0);
 	_pDeviceContext->VSSetConstantBuffers(0, 1, &pMVP_CB);
 	_pDeviceContext->PSSetShader(pPxSh, NULL, NULL);
+	_pDeviceContext->DrawIndexed(_pFS->indicesCount, 0, 0);
 
 }
 

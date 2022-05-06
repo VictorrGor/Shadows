@@ -111,7 +111,7 @@ HRESULT RenderSys::Initialize(const HWND& hWnd)
 	mVP.TopLeftY = 0;
 	pDeviceContext->RSSetViewports(1, &mVP);
 
-	mCamera = new Camera({ 0,0,0 }, { 1,0,0 }, { 0,1,0 }, width, height);
+	mCamera = new Camera({ 2,0,0 }, { 0,0,0 }, { 0,1,0 }, width, height);
 
 	pLightSh = new PhongShader();
 	pLightSh->Initialize(pDevice, pDeviceContext, L"shaders/VertexShader.hlsl", L"shaders/PixelShader.hlsl");
@@ -119,14 +119,16 @@ HRESULT RenderSys::Initialize(const HWND& hWnd)
 	pZSh = new DepthShader();
 	pZSh->Initialize(pDevice, pDeviceContext, L"shaders/DepthVS.hlsl", L"shaders/DepthPS.hlsl");
 	
+	float shadowTextureWidth = (FLOAT)width;//1024; 
+	float shadowTextureHeight = (FLOAT)height;//1024;
 	pFS = new FrameState(); 
-	hRes = pFS->Initialize(pDevice);
+	hRes = pFS->Initialize(pDevice, mCamera, shadowTextureWidth, shadowTextureHeight);
 	if (FAILED(hRes)) return hRes;
 
 	pRtT = new RenderTexture();
 	mtx mxProjective; float fFar, fNear;
 	mCamera->getProjectionMxAndAttributes(mxProjective, fNear, fFar);
-	pRtT->Initialize(pDevice, 1024, 1024, fFar, fNear, mxProjective);
+	pRtT->Initialize(pDevice, shadowTextureWidth, shadowTextureHeight, fFar, fNear);
 	
 	return hRes;
 }
@@ -429,11 +431,13 @@ void RenderSys::Render()
 	float t = (actualTime - startTime) / 1500.0f;
 	vec3 camPos = { R * sinf(t) , 2, R * cosf(t) };
 	mCamera->setPos(camPos, { 0, 0, 0 }, { 0, 1, 0 });
-	mCamera->getVP(pFS->mMVP->mProjection, pFS->mMVP->mView);
 	pFS->pCameraPos = &camPos;
 
 	//ZTest
 	pRtT->setRenderTarget(pDeviceContext);
+	pRtT->getProjectionMx(pFS->mMVP->mProjection);
+	pFS->pLight->mProjection = pFS->mMVP->mProjection;
+	pFS->mMVP->mView = pFS->pLight->mView;
 	for (std::vector<Entity*>::iterator it = objects.begin(); it != objects.end(); ++it)
 	{
 		(*it)->getModelMx(pFS->mMVP->mModel);
@@ -444,6 +448,7 @@ void RenderSys::Render()
 
 	//Forward
 
+	mCamera->getVP(pFS->mMVP->mProjection, pFS->mMVP->mView);
 	pDeviceContext->OMSetRenderTargets(1, &pRenderTargetView, pDepthBuffer);
 	const static float ClearColor[4] = { 0.3f, 0.3f, 0.3f, 1.0f };
 	pDeviceContext->ClearRenderTargetView(pRenderTargetView, ClearColor);
@@ -530,7 +535,7 @@ FrameState::~FrameState()
 	}
 }
 
-HRESULT FrameState::Initialize(ID3D11Device* _pDevice)
+HRESULT FrameState::Initialize(ID3D11Device* _pDevice, Camera* _pCamera, UINT _shadowTextureWidth, UINT _shadowTextureHeight)
 {
 	mMVP = new MVP();
 
@@ -539,6 +544,10 @@ HRESULT FrameState::Initialize(ID3D11Device* _pDevice)
 	pLight->distance = 5;
 	pLight->lightColor = { 1, 1, 1, 1 };
 	pLight->lightPos = { 0, 1, 1 };
+	
+	vec3 lookAt = _pCamera->getLookAt(), up = _pCamera->getUp();
+	pLight->mView = XMMatrixTranspose(XMMatrixLookAtLH(XMLoadFloat3(&pLight->lightPos), XMLoadFloat3(&lookAt), XMLoadFloat3(&up)));
+	
 
 	D3D11_SAMPLER_DESC pSamplerDesc; memset(&pSamplerDesc, 0, sizeof(pSamplerDesc));
 	pSamplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;

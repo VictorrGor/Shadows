@@ -35,7 +35,7 @@ RenderTexture::~RenderTexture()
 	}
 }
 
-HRESULT RenderTexture::Initialize(ID3D11Device* _pDevice, UINT _textureWidth, UINT _textureHeight, UINT _screenDepth, UINT _screenNear, mtx& _mxProjection)
+HRESULT RenderTexture::Initialize(ID3D11Device* _pDevice, UINT _textureWidth, UINT _textureHeight, float _screenDepth, float _screenNear)
 {
 	HRESULT hRes = S_OK;
 	D3D11_TEXTURE2D_DESC texture_desc; 
@@ -96,7 +96,7 @@ HRESULT RenderTexture::Initialize(ID3D11Device* _pDevice, UINT _textureWidth, UI
 	mViewport.TopLeftX = 0;
 	mViewport.TopLeftY = 0;
 
-	mxProjection = _mxProjection;
+	mxProjection = DirectX::XMMatrixPerspectiveFovLH(DirectX::XM_PIDIV2, _textureWidth / _textureHeight, _screenNear, _screenDepth); 
 }
 
 void RenderTexture::setRenderTarget(ID3D11DeviceContext* _pDeviceContext)
@@ -116,4 +116,9 @@ ID3D11ShaderResourceView* RenderTexture::getShaderResourceView()
 ID3D11Texture2D* RenderTexture::getTargetTexture()
 {
 	return pTargetTexture;
+}
+
+void RenderTexture::getProjectionMx(mtx& mProj)
+{
+	mProj = XMMatrixTranspose(mxProjection);
 }

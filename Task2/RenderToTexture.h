@@ -17,8 +17,9 @@ class RenderTexture
 public:
 	RenderTexture();
 	~RenderTexture();
-	HRESULT Initialize(ID3D11Device* _pDevice,	UINT _textureWidth, UINT _textureHeight, UINT _screenDepth, UINT _screenNear, mtx& _mxProjection);
+	HRESULT Initialize(ID3D11Device* _pDevice,	UINT _textureWidth, UINT _textureHeight, float _screenDepth, float _screenNear);
 	void setRenderTarget(ID3D11DeviceContext* _pDeviceContext);
 	ID3D11ShaderResourceView* getShaderResourceView();
 	ID3D11Texture2D* getTargetTexture();
+	void getProjectionMx(mtx& mProj);
 };

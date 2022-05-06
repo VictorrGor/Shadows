@@ -23,9 +23,9 @@ VS_OUT main(VS_INPUT inp)
 	inp.pos.w = 1;
 	o.pos = inp.pos;
 	o.pos = mul(o.pos, world);
-	o.depthPosition = o.pos;
 	o.pos = mul(o.pos, view);
 	o.pos = mul(o.pos, projection);
+	o.depthPosition = o.pos;
 
 	return o;
 }

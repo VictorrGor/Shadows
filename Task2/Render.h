@@ -31,7 +31,7 @@ struct FrameState
 {
 	FrameState();
 	~FrameState();
-	HRESULT Initialize(ID3D11Device* _pDevice);
+	HRESULT Initialize(ID3D11Device* _pDevice, Camera* _pCamera, UINT _shadowTextureWidth, UINT _shadowTextureHeight);
 
 	vec3* pCameraPos;
 	Light* pLight;

@@ -12,7 +12,7 @@ Camera::Camera(vec3 _eye, vec3 _lookAt, vec3 _up, UINT _width, UINT _height) : e
 	vEye = XMLoadFloat3(&eye);
 	vLookAt = XMLoadFloat3(&lookAt);
 	vUp = XMLoadFloat3(&up);
-	mxView = DirectX::XMMatrixLookToLH(vEye, vLookAt, vUp);
+	mxView = DirectX::XMMatrixLookAtLH(vEye, vLookAt, vUp);
 };
 
 void Camera::setPos(vec3 _eye, vec3 _lookAt, vec3 _up)
@@ -38,4 +38,12 @@ void Camera::getProjectionMxAndAttributes(mtx& _mxProjection, float& _near, floa
 	_mxProjection = mxProjection;
 	_near = fNear;
 	_far = fFar;
-};
+}
+vec3 Camera::getUp()
+{
+	return up;
+}
+vec3 Camera::getLookAt()
+{
+	return lookAt;
+}

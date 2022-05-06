@@ -16,4 +16,6 @@ public:
 	void setPos(vec3 _eye, vec3 _lookAt, vec3 _up);
 	void getVP(mtx& _mxProjection, mtx& _mxView);
 	void getProjectionMxAndAttributes(mtx& _mxProjection, float& _near, float& _far);
+	vec3 getUp();
+	vec3 getLookAt();
 };
